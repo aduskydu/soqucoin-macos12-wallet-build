@@ -77,11 +77,44 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: DMG
+        run: |
+          set -euo pipefail
+          NAME=soqucoin-v2.5.2-macos12-x64-wallet
+          ROOT=$RUNNER_TEMP/dmgroot
+          rm -rf "$ROOT"; mkdir -p "$ROOT"
+          cp soqucoin/src/soqucoind soqucoin/src/soqucoin-cli kit/README-macos12.txt "kit/dmg/使用说明.txt" kit/dmg/Install-Soqucoin.command "$ROOT/"
+          chmod +x "$ROOT/soqucoind" "$ROOT/soqucoin-cli" "$ROOT/Install-Soqucoin.command"
+          # HFS+ (not APFS) so any macOS 12 opens it; UDZO = compressed, read-only.
+          hdiutil create -volname "Soqucoin v2.5.2 (Intel, macOS 12+)" -srcfolder "$ROOT" -fs HFS+ -format UDZO -ov "dist/$NAME.dmg"
+          hdiutil verify "dist/$NAME.dmg"
+          # The programs inside the DMG must be byte-identical to the ones verified and smoke-tested above,
+          # and the install script must work from the mounted image.
+          MNT=$(mktemp -d)
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "dist/$NAME.dmg"
+          ls -la "$MNT"
+          for f in soqucoind soqucoin-cli; do
+            a=$(shasum -a 256 "soqucoin/src/$f" | cut -d' ' -f1); b=$(shasum -a 256 "$MNT/$f" | cut -d' ' -f1)
+            echo "$f  built=$a  in-dmg=$b"; test "$a" = "$b"
+          done
+          INST=$(mktemp -d)
+          SOQ_INSTALL_DIR="$INST/Soqucoin" SOQ_INSTALL_NO_TERMINAL=1 bash "$MNT/Install-Soqucoin.command"
+          "$INST/Soqucoin/soqucoin-cli" -version | head -1
+          test -f "$INST/Soqucoin/使用说明.txt"
+          hdiutil detach "$MNT"
+          (cd dist && shasum -a 256 "$NAME.dmg" | tee -a SHA256SUMS.txt)
+          {
+            echo '```'
+            (cd dist && shasum -a 256 "$NAME.dmg")
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
           name: soqucoin-v2.5.2-macos12-x64-wallet
           path: |
             dist/soqucoin-v2.5.2-macos12-x64-wallet.tar.gz
+            dist/soqucoin-v2.5.2-macos12-x64-wallet.dmg
             dist/SHA256SUMS.txt
           if-no-files-found: error
