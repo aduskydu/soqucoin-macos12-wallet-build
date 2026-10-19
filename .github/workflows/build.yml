@@ -60,7 +60,7 @@ jobs:
         run: bash kit/scripts/verify.sh soqucoin
 
       - name: Wallet smoke test (regtest)
-        run: bash kit/scripts/wallet-smoke.sh soqucoin
+        run: bash kit/scripts/wallet-smoke.sh soqucoin/src/soqucoind soqucoin/src/soqucoin-cli
 
       - name: Package
         run: |
