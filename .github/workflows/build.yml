@@ -1,0 +1,87 @@
+name: soqucoin v2.5.2 wallet build for Intel Mac, macOS 12+
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOQ_TAG: v2.5.2
+  SOQ_COMMIT: 35b38fcea458dbad37048a12112a93ec6043420a
+  MACOSX_DEPLOYMENT_TARGET: '12.0'
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    timeout-minutes: 180
+    steps:
+      - name: This repository (build scripts)
+        uses: actions/checkout@v5
+        with:
+          path: kit
+          persist-credentials: false
+
+      - name: Official soqucoin source at the release tag
+        uses: actions/checkout@v5
+        with:
+          repository: soqucoin/soqucoin
+          ref: ${{ env.SOQ_TAG }}
+          path: soqucoin
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check the source commit
+        run: |
+          got=$(git -C soqucoin rev-parse HEAD)
+          echo "source commit: $got"
+          test "$got" = "$SOQ_COMMIT"
+
+      - name: Toolchain
+        run: |
+          if [ -d /Applications/Xcode_16.4.app ]; then sudo xcode-select -s /Applications/Xcode_16.4.app; fi
+          xcodebuild -version
+          xcrun clang --version
+          sw_vers
+          brew install automake libtool pkg-config || true
+
+      - name: Build libraries and soqucoin (wallet on, macOS 12.0 target)
+        run: bash kit/scripts/build.sh soqucoin "$RUNNER_TEMP/w"
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: ${{ runner.temp }}/w/*.log
+          if-no-files-found: ignore
+
+      - name: Verify binaries
+        run: bash kit/scripts/verify.sh soqucoin
+
+      - name: Wallet smoke test (regtest)
+        run: bash kit/scripts/wallet-smoke.sh soqucoin
+
+      - name: Package
+        run: |
+          mkdir -p dist/soqucoin-v2.5.2-macos12-x64-wallet
+          cp soqucoin/src/soqucoind soqucoin/src/soqucoin-cli kit/README-macos12.txt dist/soqucoin-v2.5.2-macos12-x64-wallet/
+          cd dist
+          tar -czf soqucoin-v2.5.2-macos12-x64-wallet.tar.gz soqucoin-v2.5.2-macos12-x64-wallet
+          shasum -a 256 soqucoin-v2.5.2-macos12-x64-wallet.tar.gz soqucoin-v2.5.2-macos12-x64-wallet/soqucoind \
+            soqucoin-v2.5.2-macos12-x64-wallet/soqucoin-cli | tee SHA256SUMS.txt
+          {
+            echo "### soqucoin v2.5.2 (commit $SOQ_COMMIT) wallet build for Intel Mac, macOS 12+"
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: soqucoin-v2.5.2-macos12-x64-wallet
+          path: |
+            dist/soqucoin-v2.5.2-macos12-x64-wallet.tar.gz
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
