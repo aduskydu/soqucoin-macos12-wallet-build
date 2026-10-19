@@ -85,10 +85,11 @@ jobs:
           done
           # No libsodium (depends builds ZeroMQ --without-libsodium), so ML-DSA keys can only use the node's own
           # randombytes (src/pat/randombytes.cpp -> GetStrongRandBytes).
-          if x86_64-w64-mingw32-nm src/soqucoind.exe 2>/dev/null | grep -qE ' sodium_init$'; then
+          syms=$(x86_64-w64-mingw32-nm src/soqucoind.exe 2>/dev/null)   # captured first: with pipefail, nm | grep -q can fail at random
+          if grep -qE ' sodium_init$' <<<"$syms"; then
             echo "libsodium is linked into soqucoind.exe" >&2; exit 1
           fi
-          n=$(x86_64-w64-mingw32-nm src/soqucoind.exe 2>/dev/null | awk '$3 == "randombytes"' | wc -l)
+          n=$(awk '$3 == "randombytes"' <<<"$syms" | wc -l)
           echo "randombytes definitions in soqucoind.exe: $n"
           test "$n" -eq 1
 
@@ -139,7 +140,8 @@ jobs:
       - name: Starts on Windows
         run: |
           ./pkg/$PKG/soqucoind.exe -version | head -1
-          ./pkg/$PKG/soqucoind.exe -help | grep -q -- '-disablewallet'
+          HELP=$(./pkg/$PKG/soqucoind.exe -help)
+          grep -q -- '-disablewallet' <<<"$HELP"
 
       - name: Wallet smoke test on Windows (regtest)
         run: bash kit/scripts/wallet-smoke.sh "pkg/$PKG/soqucoind.exe" "pkg/$PKG/soqucoin-cli.exe"
