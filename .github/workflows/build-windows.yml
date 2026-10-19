@@ -1,0 +1,154 @@
+name: soqucoin v2.5.2 wallet build for Windows x64 (tested on Windows)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOQ_TAG: v2.5.2
+  SOQ_COMMIT: 35b38fcea458dbad37048a12112a93ec6043420a
+  PKG: soqucoin-v2.5.2-windows-x64-wallet
+
+jobs:
+  build:
+    # Same recipe as the official release (soqucoin .github/workflows/release.yml, build-windows-x64): Ubuntu 22.04,
+    # mingw-w64 with POSIX threads, depends/ for HOST=x86_64-w64-mingw32 (wallet = Berkeley DB 5.3.28 from depends).
+    # Added: --disable-shared (stand-alone .exe files), a check that the .exe files import only Windows system DLLs,
+    # and a real run on Windows in the next job (the official release never runs the Windows binaries).
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    steps:
+      - name: This repository (build scripts)
+        uses: actions/checkout@v5
+        with:
+          path: kit
+          persist-credentials: false
+
+      - name: Official soqucoin source at the release tag
+        uses: actions/checkout@v5
+        with:
+          repository: soqucoin/soqucoin
+          ref: ${{ env.SOQ_TAG }}
+          path: soqucoin
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check the source commit
+        run: |
+          got=$(git -C soqucoin rev-parse HEAD)
+          echo "source commit: $got"
+          test "$got" = "$SOQ_COMMIT"
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libtool autotools-dev automake pkg-config bsdmainutils python3 \
+            g++-mingw-w64-x86-64 mingw-w64-x86-64-dev curl zip
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          x86_64-w64-mingw32-g++ --version | head -1
+
+      - name: Build depends
+        run: make -C soqucoin/depends HOST=x86_64-w64-mingw32 -j4 NO_QT=1
+
+      - name: Build
+        working-directory: soqucoin
+        run: |
+          ./autogen.sh
+          CONFIG_SITE=$PWD/depends/x86_64-w64-mingw32/share/config.site \
+            ./configure --prefix=/ --without-gui --disable-tests --disable-bench --disable-shared --enable-wallet \
+            | tee configure.log
+          grep -E "with wallet *= *yes" configure.log
+          make -j4
+          ls -la src/*.exe
+
+      - name: Check the .exe files
+        working-directory: soqucoin
+        run: |
+          set -euo pipefail
+          for exe in src/soqucoind.exe src/soqucoin-cli.exe; do
+            file "$exe"
+            file "$exe" | grep -q 'PE32+ executable.*x86-64'
+            dlls=$(x86_64-w64-mingw32-objdump -p "$exe" | awk '/DLL Name:/ {print tolower($3)}' | sort -u)
+            echo "$exe imports: $(echo $dlls)"
+            # Stand-alone: no mingw runtime DLLs (libstdc++-6, libgcc_s_seh-1, libwinpthread-1) and nothing outside Windows itself.
+            for dll in $dlls; do
+              case "$dll" in
+                kernel32.dll|advapi32.dll|user32.dll|shell32.dll|ws2_32.dll|mswsock.dll|iphlpapi.dll|crypt32.dll|\
+                bcrypt.dll|rpcrt4.dll|ole32.dll|oleaut32.dll|shlwapi.dll|msvcrt.dll|gdi32.dll|comdlg32.dll|winmm.dll|\
+                ntdll.dll|secur32.dll|userenv.dll|wsock32.dll|api-ms-win-*) ;;
+                *) echo "$exe imports $dll, which is not a Windows system DLL" >&2; exit 1 ;;
+              esac
+            done
+          done
+          # No libsodium (depends builds ZeroMQ --without-libsodium), so ML-DSA keys can only use the node's own
+          # randombytes (src/pat/randombytes.cpp -> GetStrongRandBytes).
+          if x86_64-w64-mingw32-nm src/soqucoind.exe 2>/dev/null | grep -qE ' sodium_init$'; then
+            echo "libsodium is linked into soqucoind.exe" >&2; exit 1
+          fi
+          n=$(x86_64-w64-mingw32-nm src/soqucoind.exe 2>/dev/null | awk '$3 == "randombytes"' | wc -l)
+          echo "randombytes definitions in soqucoind.exe: $n"
+          test "$n" -eq 1
+
+      - name: Package
+        run: |
+          mkdir -p "dist/$PKG"
+          cp soqucoin/src/soqucoind.exe soqucoin/src/soqucoin-cli.exe kit/README-windows.txt "dist/$PKG/"
+          cd dist
+          zip -r "$PKG.zip" "$PKG"
+          sha256sum "$PKG.zip" "$PKG/soqucoind.exe" "$PKG/soqucoin-cli.exe" | tee SHA256SUMS.txt
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG }}
+          path: |
+            dist/${{ env.PKG }}.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+  test-on-windows:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: This repository (test script)
+        uses: actions/checkout@v5
+        with:
+          path: kit
+          persist-credentials: false
+
+      - name: Download the package built above
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.PKG }}
+          path: pkg
+
+      - name: Unpack and check hashes
+        run: |
+          cd pkg
+          sha256sum -c SHA256SUMS.txt --ignore-missing
+          unzip -q "$PKG.zip"
+          sha256sum -c SHA256SUMS.txt
+
+      - name: Starts on Windows
+        run: |
+          ./pkg/$PKG/soqucoind.exe -version | head -1
+          ./pkg/$PKG/soqucoind.exe -help | grep -q -- '-disablewallet'
+
+      - name: Wallet smoke test on Windows (regtest)
+        run: bash kit/scripts/wallet-smoke.sh "pkg/$PKG/soqucoind.exe" "pkg/$PKG/soqucoin-cli.exe"
+
+      - name: Summary
+        run: |
+          {
+            echo "### soqucoin v2.5.2 (commit $SOQ_COMMIT) wallet build for Windows x64 — wallet smoke test passed on $(cmd //c ver | tr -d '\r' | tail -1)"
+            echo '```'
+            cat pkg/SHA256SUMS.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
