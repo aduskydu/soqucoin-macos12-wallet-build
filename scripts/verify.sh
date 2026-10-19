@@ -44,7 +44,8 @@ disasm_of() {  # binary symbol
 
 echo "::group::key generation uses the node's strong RNG (GetStrongRandBytes)"
 # getnewaddress: CWallet::GenerateNewKey -> CKey::MakeNewKey(bool), which draws its seed from GetStrongRandBytes.
-mk=$(nm "$D" | awk '$3 == "__ZN4CKey10MakeNewKeyEb" {print $3; exit}')
+dsyms=$(nm "$D")   # captured first: nm | awk '{...; exit}' breaks nm's pipe (LLVM ERROR: Broken pipe) under pipefail
+mk=$(awk '$3 == "__ZN4CKey10MakeNewKeyEb" {print $3; exit}' <<<"$dsyms")
 if [ -n "$mk" ]; then
   d=$(disasm_of "$D" "$mk") || { echo "could not locate CKey::MakeNewKey" >&2; exit 1; }
   grep -q 'GetStrongRandBytes' <<<"$d" || { echo "CKey::MakeNewKey does not call GetStrongRandBytes" >&2; exit 1; }
