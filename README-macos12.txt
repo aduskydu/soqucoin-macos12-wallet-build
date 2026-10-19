@@ -2,8 +2,9 @@ Soqucoin Core v2.5.2 (official source, commit 35b38fce) with the WALLET, for Int
 Built from the official source by this repository's GitHub Actions run; the official macOS packages leave the wallet out
 and need macOS 15. Command-line only (soqucoind + soqucoin-cli), no graphical wallet.
 
-1. Unpack, open Terminal, go into the folder:
-     cd ~/Downloads/soqucoin-v2.5.2-macos12-x64-wallet
+1. Unpack, open Terminal, type cd and a space, drag the folder that holds soqucoind into the Terminal window, press Enter
+   (if that folder only holds another folder of the same name, go into that one):
+     cd <the folder>
    Downloaded files are quarantined by macOS; clear that for this folder once (otherwise macOS refuses to run them):
      xattr -dr com.apple.quarantine .
 2. Start the node (first start creates the wallet; you do not need to wait for it to sync):
@@ -17,8 +18,10 @@ and need macOS 15. Command-line only (soqucoind + soqucoin-cli), no graphical wa
    Nothing is printed on success. The backup lands in
      ~/Library/Application Support/Soqucoin/backups/
    Copy it to a USB stick or another computer. The wallet itself is ~/Library/Application Support/Soqucoin/wallet.dat.
-   This wallet has no recovery phrase: if the wallet and every backup are lost, the coins are lost. The backup file
-   is the private key - never send it to anyone.
+   This wallet has no recovery phrase and does not derive keys from a seed: a backup only holds the keys that existed
+   when it was made. Make a NEW backup (new file name, e.g. soq-wallet-2.dat) after every getnewaddress and after every
+   payment you send (change goes to a new key), and keep the latest copy off this computer. If the wallet and every
+   backup are lost, the coins are lost. The backup file is the private key - never send it to anyone.
 5. Stop the node when done (receiving does not need it running):
      ./soqucoin-cli stop
 
