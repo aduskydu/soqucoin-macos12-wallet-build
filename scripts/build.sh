@@ -29,7 +29,12 @@ ARCH=x86_64
 JOBS=$(sysctl -n hw.ncpu)
 SDK=$(xcrun --sdk macosx --show-sdk-path)
 export CC="$(xcrun -f clang)" CXX="$(xcrun -f clang++)"
+# The toolchain clang (not the /usr/bin/clang shim) only finds the SDK through SDKROOT or -isysroot, and autoconf's
+# preprocessor-only probes (header "presence", "ANSI C header files") use CPPFLAGS, not CFLAGS. Run 1 failed exactly
+# there: BDB's configure saw no system headers and fell back to <varargs.h>. So: SDKROOT + -isysroot in CPPFLAGS too.
+export SDKROOT="$SDK"
 COMMON="-arch $ARCH -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET -isysroot $SDK"
+export CPPFLAGS="-isysroot $SDK -mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET"
 export CFLAGS="$COMMON -O2"
 export CXXFLAGS="$COMMON -O2 -stdlib=libc++"
 export LDFLAGS="$COMMON"
@@ -74,6 +79,7 @@ echo "::group::libevent"
 cd "$BLD" && rm -rf libevent-2.1.13-stable && tar xzf "$DL/libevent-2.1.13-stable.tar.gz" && cd libevent-2.1.13-stable
 ./configure --prefix="$PREFIX" --disable-shared --enable-static --disable-openssl --disable-libevent-regress \
   --disable-samples --disable-debug-mode >"$WORK/libevent.log" 2>&1 || { tail -50 "$WORK/libevent.log"; exit 1; }
+grep -q "^checking for sys/select.h... yes" "$WORK/libevent.log" || { echo "libevent configure: sys/select.h not detected" >&2; grep -E "^checking for sys/" "$WORK/libevent.log" >&2; exit 1; }
 make -j"$JOBS" >>"$WORK/libevent.log" 2>&1 && make install >>"$WORK/libevent.log" 2>&1
 echo "::endgroup::"
 
@@ -91,6 +97,9 @@ CFLAGS="$CFLAGS $BDB_CWARN" CXXFLAGS="$CXXFLAGS -std=c++11" \
   ../dist/configure --prefix="$PREFIX" --disable-shared --enable-static --enable-cxx --disable-replication \
   >"$WORK/bdb.log" 2>&1 || { tail -60 "$WORK/bdb.log"; exit 1; }
 grep -E "^checking for mutexes" "$WORK/bdb.log" || true
+# Fail early if configure mis-detected the basics again (it would build against <varargs.h> or without pthreads).
+grep -q "^checking for ANSI C header files... yes" "$WORK/bdb.log" || { echo "BDB configure: ANSI C headers not detected" >&2; grep -E "^checking" "$WORK/bdb.log" | grep -E "presence\.\.\. no|header files" >&2; exit 1; }
+grep -q "^checking pthread.h presence... yes" "$WORK/bdb.log" || { echo "BDB configure: pthread.h not detected" >&2; exit 1; }
 make -j"$JOBS" libdb_cxx-5.3.a libdb-5.3.a >>"$WORK/bdb.log" 2>&1 || { tail -60 "$WORK/bdb.log"; exit 1; }
 make install_lib install_include >>"$WORK/bdb.log" 2>&1
 echo "::endgroup::"
@@ -104,7 +113,7 @@ BREW=false ./configure --without-gui --disable-tests --disable-bench --disable-s
   --disable-zmq --without-miniupnpc \
   --with-boost="$PREFIX" --with-boost-libdir="$PREFIX/lib" \
   BDB_CFLAGS="-I$PREFIX/include" BDB_LIBS="-L$PREFIX/lib -ldb_cxx-5.3 -ldb-5.3" \
-  CPPFLAGS="-I$PREFIX/include" LDFLAGS="$LDFLAGS -L$PREFIX/lib" 2>&1 | tee "$WORK/configure.log"
+  CPPFLAGS="$CPPFLAGS -I$PREFIX/include" LDFLAGS="$LDFLAGS -L$PREFIX/lib" 2>&1 | tee "$WORK/configure.log"
 grep -E "with wallet *= *yes" "$WORK/configure.log" || { echo "wallet is not enabled" >&2; exit 1; }
 grep -E "with zmq *= *no" "$WORK/configure.log" || { echo "zmq should be off" >&2; exit 1; }
 echo "::endgroup::"
