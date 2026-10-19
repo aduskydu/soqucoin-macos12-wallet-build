@@ -120,6 +120,11 @@ echo "::endgroup::"
 
 echo "::group::soqucoin make"
 make -j"$JOBS" >"$WORK/build.log" 2>&1 || { grep -E "error:" "$WORK/build.log" | head -40; tail -80 "$WORK/build.log"; exit 1; }
+# Any call to an API newer than the deployment target (clang: "... is only available on macOS 13.0 or newer").
+if grep -hnE 'only available on macOS (1[3-9]|2[0-9])|\[-Wunguarded-availability' "$WORK"/*.log; then
+  echo "something uses an API newer than macOS $MACOSX_DEPLOYMENT_TARGET" >&2
+  exit 1
+fi
 if grep -m 5 'built for newer' "$WORK/build.log"; then
   echo "an archive needs a newer macOS than $MACOSX_DEPLOYMENT_TARGET" >&2
   exit 1
