@@ -16,8 +16,10 @@ Command-line only (soqucoind.exe + soqucoin-cli.exe), no graphical wallet.
      .\soqucoin-cli.exe backupwallet soq-wallet-backup.dat
    Nothing is printed on success. The backup lands in %APPDATA%\Soqucoin\backups\ (paste that into the Explorer
    address bar). Copy it to a USB stick or another computer. The wallet itself is %APPDATA%\Soqucoin\wallet.dat.
-   This wallet has no recovery phrase: if the wallet and every backup are lost, the coins are lost. The backup file
-   is the private key - never send it to anyone.
+   This wallet has no recovery phrase and does not derive keys from a seed: a backup only holds the keys that existed
+   when it was made. Make a NEW backup (new file name, e.g. soq-wallet-2.dat) after every getnewaddress and after every
+   payment you send (change goes to a new key), and keep the latest copy off this computer. If the wallet and every
+   backup are lost, the coins are lost. The backup file is the private key - never send it to anyone.
 5. Stop the node when done (receiving does not need it running):
      .\soqucoin-cli.exe stop
 
