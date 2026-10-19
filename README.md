@@ -1,5 +1,7 @@
 # soqucoin-macos12-wallet-build
 
+(Also: **build-windows** — the Windows x64 wallet build, same recipe as the official release, stand-alone and run-tested on a Windows runner.)
+
 Builds **Soqucoin Core v2.5.2** (official source, tag `v2.5.2`, commit `35b38fce`) **with the wallet** for **Intel Macs running macOS 12 or later**.
 The official macOS packages are built with `--disable-wallet` and for macOS 15, so they cannot create addresses and do not start on macOS 12.
 
