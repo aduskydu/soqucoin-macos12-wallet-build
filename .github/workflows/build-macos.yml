@@ -83,7 +83,7 @@ jobs:
           NAME=soqucoin-v2.5.2-macos12-x64-wallet
           ROOT=$RUNNER_TEMP/dmgroot
           rm -rf "$ROOT"; mkdir -p "$ROOT"
-          cp soqucoin/src/soqucoind soqucoin/src/soqucoin-cli kit/packaging/macos/README-macos12.txt "kit/packaging/macos/使用说明.txt" kit/packaging/macos/Install-Soqucoin.command "$ROOT/"
+          cp soqucoin/src/soqucoind soqucoin/src/soqucoin-cli kit/packaging/macos/README-macos12.txt kit/packaging/macos/Install-Soqucoin.command "$ROOT/"
           chmod +x "$ROOT/soqucoind" "$ROOT/soqucoin-cli" "$ROOT/Install-Soqucoin.command"
           # HFS+ (not APFS) so any macOS 12 opens it; UDZO = compressed, read-only.
           hdiutil create -volname "Soqucoin v2.5.2 (Intel, macOS 12+)" -srcfolder "$ROOT" -fs HFS+ -format UDZO -ov "dist/$NAME.dmg"
@@ -100,7 +100,7 @@ jobs:
           INST=$(mktemp -d)
           SOQ_INSTALL_DIR="$INST/Soqucoin" SOQ_INSTALL_NO_TERMINAL=1 bash "$MNT/Install-Soqucoin.command"
           "$INST/Soqucoin/soqucoin-cli" -version | head -1
-          test -f "$INST/Soqucoin/使用说明.txt"
+          test -f "$INST/Soqucoin/README-macos12.txt"
           hdiutil detach "$MNT"
           (cd dist && shasum -a 256 "$NAME.dmg" | tee -a SHA256SUMS.txt)
           {
