@@ -13,7 +13,7 @@
 #   - configures SOQ with the wallet on, and ZMQ / UPnP / GUI / tests / bench off (the wallet needs none of them;
 #     leaving ZMQ out also keeps libsodium out, whose own randombytes() would otherwise compete with the node's);
 #   - fails if any archive was built for a newer macOS than 12.0.
-# Usage: scripts/build.sh <soqucoin source dir> <work dir>
+# Usage: scripts/macos-build.sh <soqucoin source dir> <work dir>
 set -euo pipefail
 
 SRC=$(cd "$1" && pwd)

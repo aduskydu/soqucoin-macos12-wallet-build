@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Checks on the built binaries (run on the macOS build runner).
-# Usage: scripts/verify.sh <soqucoin source dir>
+# Usage: scripts/macos-verify.sh <soqucoin source dir>
 # Note: every command output is captured into a variable before grep: with pipefail, `prog | grep -q` can fail at
 # random (grep exits at the first match, prog gets SIGPIPE, the pipeline reports 141).
 set -euo pipefail
