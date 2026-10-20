@@ -32,13 +32,17 @@ Actions → pick the workflow ("… for Intel Mac, macOS 12+", "… for Apple Si
 - Apple Silicon Mac: `soqucoin-v2.5.2-macos11-arm64-wallet.dmg` (and `.tar.gz`)
 - Windows: `soqucoin-v2.5.2-windows-x64-wallet.zip`
 
-Hashes change with every rebuild; trust the run's Summary and `SHA256SUMS.txt`. The builds of 2026-10-19:
+Hashes change with every rebuild; trust the run's Summary and `SHA256SUMS.txt`. The current builds:
 
-| File | SHA-256 | Run |
-|---|---|---|
-| `soqucoin-v2.5.2-windows-x64-wallet.zip` | `1cb37e10969737df653d373860d2ac1ac08f2e2d88e53ada2a49a3631cf3e938` | 39291541688 |
-| `soqucoin-v2.5.2-macos12-x64-wallet.dmg` | `85fd784ee9b5295e8390d2e0073d9b05c7458304380d91f20e8fdc7105911aaf` | 39296195211 |
-| `soqucoin-v2.5.2-macos12-x64-wallet.tar.gz` | `ca4c1dacfc402654f7a474e1ff14d0e873c73489aea7aac470b751af01e71b13` | 39296195211 |
+| File | SHA-256 | Run | Built |
+|---|---|---|---|
+| `soqucoin-v2.5.2-macos11-arm64-wallet.dmg` | `68034b94ee63271ebef918dc6a1e44d9c64fe4e6feea593b8f6d8bdd14d2f5df` | 39407434618 | 2026-10-20 |
+| `soqucoin-v2.5.2-macos11-arm64-wallet.tar.gz` | `31d2c50072ab2319e77f43e9d6b63167983b8e51d800306714bb0cee8512ad4f` | 39407434618 | 2026-10-20 |
+| `soqucoin-v2.5.2-macos12-x64-wallet.dmg` | `ffe5d3b13b9a385293939854738ceebd109b20bdf7a0c7feb851e452a4209567` | 39407437748 | 2026-10-20 |
+| `soqucoin-v2.5.2-macos12-x64-wallet.tar.gz` | `287b164b5f852154a3098b6611b315b5fc98d80cb4916330d8d4dd572f5edf05` | 39407437748 | 2026-10-20 |
+| `soqucoin-v2.5.2-windows-x64-wallet.zip` | `1cb37e10969737df653d373860d2ac1ac08f2e2d88e53ada2a49a3631cf3e938` | 39291541688 | 2026-10-19 |
+
+An earlier Intel DMG (2026-10-19, run 39296195211, `85fd784ee9b5295e8390d2e0073d9b05c7458304380d91f20e8fdc7105911aaf`) was built from the same source with the earlier scripts, package notes and installer.
 
 Usage: see the notes inside each package — `packaging/macos/README-macos12.txt`, `packaging/macos-arm64/README-macos11-arm64.txt` and `packaging/windows/README-windows.txt`.
 The wallet has no recovery phrase and a backup only holds the keys that existed when it was made: back up again after every new address and every payment.
@@ -71,7 +75,7 @@ packaging/windows/                    notes that go into the Windows zip
 - 怎么编的:源码是官方 tag `v2.5.2`(commit `35b38fce`,每次构建都核对)。Intel Mac 版在 GitHub `macos-15-intel` 上从源码编 OpenSSL、Boost、libevent、Berkeley DB(源码包 SHA-256 固定),目标 macOS 12.0、x86_64、静态链接;Apple 芯片版用同一套脚本在 GitHub `macos-15`(arm64)上原生编,目标 macOS 11.0,程序带链接器的临时签名(Apple 芯片要求有签名才能运行);Windows 在 `ubuntu-22.04` 上照官方配方交叉编译,另加 `--disable-shared`,不依赖额外 DLL。
 - 检查与实测:macOS 跑官方 `check-macos-release.sh`、查弱导入和 libsodium、核对随机数来源,DMG 里的程序和测过的逐字节一致,Apple 芯片版另外核签名;Windows 只导入系统 DLL。三个版本都在各自平台的 regtest 测试链上实测钱包:新建地址 → 备份 → 挖矿并转出 → 用备份恢复后余额一致、能转出 → 第二个新钱包地址不同。
 - 没测过:真机(只在 GitHub 的 macOS 15 机器上跑过)、比 15 老的 macOS(Intel 12–14、Apple 芯片 11–14)、主网收发。
-- 下载:Actions → 选对应的流程(「… for Intel Mac, macOS 12+」「… for Apple Silicon Mac, macOS 11+」「… for Windows x64」)→ 最近一次成功的运行 → Artifacts(要登录 GitHub,保留 90 天)。每次重新构建哈希都会变,以那次运行的 Summary 和 `SHA256SUMS.txt` 为准;2026-10-19 那一版的哈希见上面的表。
+- 下载:Actions → 选对应的流程(「… for Intel Mac, macOS 12+」「… for Apple Silicon Mac, macOS 11+」「… for Windows x64」)→ 最近一次成功的运行 → Artifacts(要登录 GitHub,保留 90 天)。每次重新构建哈希都会变,以那次运行的 Summary 和 `SHA256SUMS.txt` 为准;各版本的哈希见上面的表。
 - 用法:macOS 的中文说明在说明文件文末的 Notes 里(Intel 版 `packaging/macos/README-macos12.txt`,Apple 芯片版 `packaging/macos-arm64/README-macos11-arm64.txt`,DMG 和 .tar.gz 里是同一个文件);Windows 只有英文说明 `packaging/windows/README-windows.txt`。
 - 这个钱包没有助记词,备份只含备份那一刻已有的钥匙:每次生成新地址、每次转出之后都要重新备份。
 
