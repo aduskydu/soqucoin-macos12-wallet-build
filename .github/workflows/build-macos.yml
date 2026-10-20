@@ -86,7 +86,12 @@ jobs:
           cp soqucoin/src/soqucoind soqucoin/src/soqucoin-cli kit/packaging/macos/README-macos12.txt kit/packaging/macos/Install-Soqucoin.command "$ROOT/"
           chmod +x "$ROOT/soqucoind" "$ROOT/soqucoin-cli" "$ROOT/Install-Soqucoin.command"
           # HFS+ (not APFS) so any macOS 12 opens it; UDZO = compressed, read-only.
-          hdiutil create -volname "Soqucoin v2.5.2 (Intel, macOS 12+)" -srcfolder "$ROOT" -fs HFS+ -format UDZO -ov "dist/$NAME.dmg"
+          # hdiutil create sometimes fails with "Resource busy" on hosted runners; retry a few times.
+          for i in 1 2 3 4 5; do
+            if hdiutil create -volname "Soqucoin v2.5.2 (Intel, macOS 12+)" -srcfolder "$ROOT" -fs HFS+ -format UDZO -ov "dist/$NAME.dmg"; then break; fi
+            echo "hdiutil create failed (attempt $i), retrying"; sleep 15
+          done
+          test -f "dist/$NAME.dmg"
           hdiutil verify "dist/$NAME.dmg"
           # The programs inside the DMG must be byte-identical to the ones verified and smoke-tested above,
           # and the install script must work from the mounted image.

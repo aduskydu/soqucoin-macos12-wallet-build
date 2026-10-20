@@ -26,7 +26,7 @@ Command-line programs only (`soqucoind` + `soqucoin-cli`), no GUI; the binaries 
 
 ## Downloads
 
-Actions → the latest successful `build-macos` / `build-macos-arm64` / `build-windows` run → **Artifacts** (GitHub login required; kept for 90 days).
+Actions → pick the workflow ("… for Intel Mac, macOS 12+", "… for Apple Silicon Mac, macOS 11+" or "… for Windows x64") → its latest successful run → **Artifacts** (GitHub login required; kept for 90 days).
 
 - Intel Mac: `soqucoin-v2.5.2-macos12-x64-wallet.dmg` (and `.tar.gz`)
 - Apple Silicon Mac: `soqucoin-v2.5.2-macos11-arm64-wallet.dmg` (and `.tar.gz`)
@@ -71,7 +71,7 @@ packaging/windows/                    notes that go into the Windows zip
 - 怎么编的:源码是官方 tag `v2.5.2`(commit `35b38fce`,每次构建都核对)。Intel Mac 版在 GitHub `macos-15-intel` 上从源码编 OpenSSL、Boost、libevent、Berkeley DB(源码包 SHA-256 固定),目标 macOS 12.0、x86_64、静态链接;Apple 芯片版用同一套脚本在 GitHub `macos-15`(arm64)上原生编,目标 macOS 11.0,程序带链接器的临时签名(Apple 芯片要求有签名才能运行);Windows 在 `ubuntu-22.04` 上照官方配方交叉编译,另加 `--disable-shared`,不依赖额外 DLL。
 - 检查与实测:macOS 跑官方 `check-macos-release.sh`、查弱导入和 libsodium、核对随机数来源,DMG 里的程序和测过的逐字节一致,Apple 芯片版另外核签名;Windows 只导入系统 DLL。三个版本都在各自平台的 regtest 测试链上实测钱包:新建地址 → 备份 → 挖矿并转出 → 用备份恢复后余额一致、能转出 → 第二个新钱包地址不同。
 - 没测过:真机(只在 GitHub 的 macOS 15 机器上跑过)、比 15 老的 macOS(Intel 12–14、Apple 芯片 11–14)、主网收发。
-- 下载:Actions → 最近一次成功的 `build-macos` / `build-macos-arm64` / `build-windows` → Artifacts(要登录 GitHub,保留 90 天)。每次重新构建哈希都会变,以那次运行的 Summary 和 `SHA256SUMS.txt` 为准;2026-10-19 那一版的哈希见上面的表。
+- 下载:Actions → 选对应的流程(「… for Intel Mac, macOS 12+」「… for Apple Silicon Mac, macOS 11+」「… for Windows x64」)→ 最近一次成功的运行 → Artifacts(要登录 GitHub,保留 90 天)。每次重新构建哈希都会变,以那次运行的 Summary 和 `SHA256SUMS.txt` 为准;2026-10-19 那一版的哈希见上面的表。
 - 用法:macOS 的中文说明在说明文件文末的 Notes 里(Intel 版 `packaging/macos/README-macos12.txt`,Apple 芯片版 `packaging/macos-arm64/README-macos11-arm64.txt`,DMG 和 .tar.gz 里是同一个文件);Windows 只有英文说明 `packaging/windows/README-windows.txt`。
 - 这个钱包没有助记词,备份只含备份那一刻已有的钥匙:每次生成新地址、每次转出之后都要重新备份。
 

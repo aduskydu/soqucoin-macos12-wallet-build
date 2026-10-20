@@ -5,7 +5,10 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
 DEST="${SOQ_INSTALL_DIR:-$HOME/Soqucoin}"
 mkdir -p "$DEST"
-cp -f "$SRC/soqucoind" "$SRC/soqucoin-cli" "$DEST/"
+# Remove before copying: on Apple Silicon, overwriting an already-run signed binary in place keeps the old
+# signature cached for that file and the new one gets killed ("Killed: 9"). A fresh file avoids that.
+rm -f "$DEST/soqucoind" "$DEST/soqucoin-cli"
+cp "$SRC/soqucoind" "$SRC/soqucoin-cli" "$DEST/"
 NOTES=README
 for f in "$SRC"/README-macos*.txt; do
   [ -e "$f" ] || continue
