@@ -1,27 +1,41 @@
 #!/usr/bin/env bash
 # Checks on the built binaries (run on the macOS build runner).
-# Usage: scripts/macos-verify.sh <soqucoin source dir>
+# Usage: [ARCH=x86_64|arm64] [MACOSX_DEPLOYMENT_TARGET=12.0] scripts/macos-verify.sh <soqucoin source dir>
 # Note: every command output is captured into a variable before grep: with pipefail, `prog | grep -q` can fail at
 # random (grep exits at the first match, prog gets SIGPIPE, the pipeline reports 141).
 set -euo pipefail
 SRC=$(cd "$1" && pwd)
 D=$SRC/src/soqucoind
 C=$SRC/src/soqucoin-cli
+ARCH=${ARCH:-x86_64}
+MIN=${MACOSX_DEPLOYMENT_TARGET:-12.0}
 
-echo "::group::official macOS release checks (x86_64, minos 12.0, system libraries only, runs without /usr/local + /opt/homebrew)"
-bash "$SRC/.github/scripts/check-macos-release.sh" x86_64 12.0 "$D" "$C"
+echo "::group::official macOS release checks ($ARCH, minos $MIN, system libraries only, runs without /usr/local + /opt/homebrew)"
+bash "$SRC/.github/scripts/check-macos-release.sh" "$ARCH" "$MIN" "$D" "$C"
 otool -L "$D" "$C"
 vtool -show-build "$D" | sed -n '1,12p'
 echo "::endgroup::"
 
-echo "::group::nothing newer than macOS 12: no weak imports (a symbol newer than the deployment target is weak-linked and is NULL on 12)"
+echo "::group::nothing newer than macOS $MIN: no weak imports (a symbol newer than the deployment target is weak-linked and is NULL on $MIN)"
 for bin in "$D" "$C"; do
   syms=$(nm -m "$bin")
   weak=$(grep -E '\(undefined\) weak external' <<<"$syms" || true)
-  if [ -n "$weak" ]; then echo "$weak"; echo "$bin has weak imports - API newer than macOS 12.0?" >&2; exit 1; fi
+  if [ -n "$weak" ]; then echo "$weak"; echo "$bin has weak imports - API newer than macOS $MIN?" >&2; exit 1; fi
   echo "$bin: no weak imports"
 done
 echo "::endgroup::"
+
+if [ "$ARCH" = arm64 ]; then
+  # Apple Silicon refuses to run an arm64 binary without a code signature. The linker signs it ad hoc
+  # ("linker-signed"); anything that rewrote the file afterwards would break that.
+  echo "::group::arm64: code signature present and valid"
+  for bin in "$D" "$C"; do
+    codesign --verify --strict --verbose=2 "$bin"
+    info=$(codesign -dv "$bin" 2>&1)
+    grep -E '^(Format|CodeDirectory|Signature)' <<<"$info" || true
+  done
+  echo "::endgroup::"
+fi
 
 echo "::group::wallet compiled in, ZMQ left out"
 HELP=$("$D" -help)

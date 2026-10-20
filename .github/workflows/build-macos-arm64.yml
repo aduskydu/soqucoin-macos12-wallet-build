@@ -1,0 +1,124 @@
+name: soqucoin v2.5.2 wallet build for Apple Silicon Mac, macOS 11+
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOQ_TAG: v2.5.2
+  SOQ_COMMIT: 35b38fcea458dbad37048a12112a93ec6043420a
+  MACOSX_DEPLOYMENT_TARGET: '11.0'
+  ARCH: arm64
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - name: This repository (build scripts)
+        uses: actions/checkout@v5
+        with:
+          path: kit
+          persist-credentials: false
+
+      - name: Official soqucoin source at the release tag
+        uses: actions/checkout@v5
+        with:
+          repository: soqucoin/soqucoin
+          ref: ${{ env.SOQ_TAG }}
+          path: soqucoin
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check the source commit
+        run: |
+          got=$(git -C soqucoin rev-parse HEAD)
+          echo "source commit: $got"
+          test "$got" = "$SOQ_COMMIT"
+
+      - name: Toolchain
+        run: |
+          if [ -d /Applications/Xcode_16.4.app ]; then sudo xcode-select -s /Applications/Xcode_16.4.app; fi
+          xcodebuild -version
+          xcrun clang --version
+          sw_vers
+          uname -m
+          test "$(uname -m)" = arm64
+          brew install automake libtool pkg-config || true
+
+      - name: Build libraries and soqucoin (wallet on, arm64, macOS 11.0 target)
+        run: bash kit/scripts/macos-build.sh soqucoin "$RUNNER_TEMP/w"
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-arm64
+          path: ${{ runner.temp }}/w/*.log
+          if-no-files-found: ignore
+
+      - name: Verify binaries
+        run: bash kit/scripts/macos-verify.sh soqucoin
+
+      - name: Wallet smoke test (regtest)
+        run: bash kit/scripts/wallet-smoke.sh soqucoin/src/soqucoind soqucoin/src/soqucoin-cli
+
+      - name: Package
+        run: |
+          mkdir -p dist/soqucoin-v2.5.2-macos11-arm64-wallet
+          cp soqucoin/src/soqucoind soqucoin/src/soqucoin-cli kit/packaging/macos-arm64/README-macos11-arm64.txt dist/soqucoin-v2.5.2-macos11-arm64-wallet/
+          cd dist
+          tar -czf soqucoin-v2.5.2-macos11-arm64-wallet.tar.gz soqucoin-v2.5.2-macos11-arm64-wallet
+          shasum -a 256 soqucoin-v2.5.2-macos11-arm64-wallet.tar.gz soqucoin-v2.5.2-macos11-arm64-wallet/soqucoind \
+            soqucoin-v2.5.2-macos11-arm64-wallet/soqucoin-cli | tee SHA256SUMS.txt
+          {
+            echo "### soqucoin v2.5.2 (commit $SOQ_COMMIT) wallet build for Apple Silicon Mac, macOS 11+"
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: DMG
+        run: |
+          set -euo pipefail
+          NAME=soqucoin-v2.5.2-macos11-arm64-wallet
+          ROOT=$RUNNER_TEMP/dmgroot
+          rm -rf "$ROOT"; mkdir -p "$ROOT"
+          cp soqucoin/src/soqucoind soqucoin/src/soqucoin-cli kit/packaging/macos-arm64/README-macos11-arm64.txt kit/packaging/macos/Install-Soqucoin.command "$ROOT/"
+          chmod +x "$ROOT/soqucoind" "$ROOT/soqucoin-cli" "$ROOT/Install-Soqucoin.command"
+          # HFS+ (not APFS) so any supported macOS opens it; UDZO = compressed, read-only.
+          hdiutil create -volname "Soqucoin v2.5.2 (Apple Silicon, macOS 11+)" -srcfolder "$ROOT" -fs HFS+ -format UDZO -ov "dist/$NAME.dmg"
+          hdiutil verify "dist/$NAME.dmg"
+          # The programs inside the DMG must be byte-identical to the ones verified and smoke-tested above,
+          # and the install script must work from the mounted image.
+          MNT=$(mktemp -d)
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "dist/$NAME.dmg"
+          ls -la "$MNT"
+          for f in soqucoind soqucoin-cli; do
+            a=$(shasum -a 256 "soqucoin/src/$f" | cut -d' ' -f1); b=$(shasum -a 256 "$MNT/$f" | cut -d' ' -f1)
+            echo "$f  built=$a  in-dmg=$b"; test "$a" = "$b"
+          done
+          INST=$(mktemp -d)
+          SOQ_INSTALL_DIR="$INST/Soqucoin" SOQ_INSTALL_NO_TERMINAL=1 bash "$MNT/Install-Soqucoin.command"
+          "$INST/Soqucoin/soqucoin-cli" -version | head -1
+          test -f "$INST/Soqucoin/README-macos11-arm64.txt"
+          codesign --verify --strict "$INST/Soqucoin/soqucoind" "$INST/Soqucoin/soqucoin-cli"
+          hdiutil detach "$MNT"
+          (cd dist && shasum -a 256 "$NAME.dmg" | tee -a SHA256SUMS.txt)
+          {
+            echo '```'
+            (cd dist && shasum -a 256 "$NAME.dmg")
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: soqucoin-v2.5.2-macos11-arm64-wallet
+          path: |
+            dist/soqucoin-v2.5.2-macos11-arm64-wallet.tar.gz
+            dist/soqucoin-v2.5.2-macos11-arm64-wallet.dmg
+            dist/SHA256SUMS.txt
+          if-no-files-found: error

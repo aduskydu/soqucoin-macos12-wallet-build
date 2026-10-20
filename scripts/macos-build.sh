@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# Build soqucoind + soqucoin-cli WITH the wallet for Intel Macs running macOS 12 (Monterey) or later.
+# Build soqucoind + soqucoin-cli WITH the wallet for Macs: Intel (ARCH=x86_64, default, macOS 12+) or
+# Apple Silicon (ARCH=arm64, macOS 11+). The build is native: run it on a runner of the same architecture.
 #
 # Why this exists: the official v2.5.2 macOS packages are built with --disable-wallet and for macOS 15.0
-# (Homebrew bottles), so they cannot generate addresses and do not start on macOS 12.
+# (Homebrew bottles), so they cannot generate addresses and do not start on older macOS.
 #
 # What it does:
 #   - takes the official source at tag v2.5.2 (commit pinned, checked);
-#   - builds every library from source with MACOSX_DEPLOYMENT_TARGET=12.0, static, x86_64 only:
+#   - builds every library from source with MACOSX_DEPLOYMENT_TARGET (12.0 unless set), static, one architecture:
 #     OpenSSL 3.6.3, Boost 1.92.0 (the versions the official v2.5.2 macOS build used), libevent 2.1.13-stable,
 #     Berkeley DB 5.3.28 (the version SOQ's own depends/ uses, with its patches) — every tarball is checked
 #     against a pinned SHA-256;
 #   - configures SOQ with the wallet on, and ZMQ / UPnP / GUI / tests / bench off (the wallet needs none of them;
 #     leaving ZMQ out also keeps libsodium out, whose own randombytes() would otherwise compete with the node's);
-#   - fails if any archive was built for a newer macOS than 12.0.
-# Usage: scripts/macos-build.sh <soqucoin source dir> <work dir>
+#   - fails if any archive was built for, or any call needs, a newer macOS than MACOSX_DEPLOYMENT_TARGET.
+# Usage: [ARCH=x86_64|arm64] [MACOSX_DEPLOYMENT_TARGET=12.0] scripts/macos-build.sh <soqucoin source dir> <work dir>
 set -euo pipefail
 
 SRC=$(cd "$1" && pwd)
@@ -25,7 +26,14 @@ mkdir -p "$PREFIX" "$DL" "$BLD"
 
 : "${MACOSX_DEPLOYMENT_TARGET:=12.0}"
 export MACOSX_DEPLOYMENT_TARGET
-ARCH=x86_64
+ARCH=${ARCH:-x86_64}
+case "$ARCH" in
+  x86_64) OPENSSL_TARGET=darwin64-x86_64-cc; B2_ARCH=x86 ;;
+  arm64)  OPENSSL_TARGET=darwin64-arm64-cc;  B2_ARCH=arm ;;
+  *) echo "ARCH must be x86_64 or arm64, not '$ARCH'" >&2; exit 2 ;;
+esac
+[ "$(uname -m)" = "$ARCH" ] || { echo "native build only: this machine is $(uname -m), ARCH is $ARCH" >&2; exit 2; }
+echo "building for $ARCH, macOS $MACOSX_DEPLOYMENT_TARGET and later"
 JOBS=$(sysctl -n hw.ncpu)
 SDK=$(xcrun --sdk macosx --show-sdk-path)
 export CC="$(xcrun -f clang)" CXX="$(xcrun -f clang++)"
@@ -60,7 +68,7 @@ echo "::endgroup::"
 
 echo "::group::openssl"
 cd "$BLD" && rm -rf openssl-3.6.3 && tar xzf "$DL/openssl-3.6.3.tar.gz" && cd openssl-3.6.3
-./Configure darwin64-x86_64-cc no-shared no-tests no-docs --prefix="$PREFIX" --libdir=lib \
+./Configure "$OPENSSL_TARGET" no-shared no-tests no-docs --prefix="$PREFIX" --libdir=lib \
   "-mmacosx-version-min=$MACOSX_DEPLOYMENT_TARGET" -isysroot "$SDK"
 make -j"$JOBS" build_libs >"$WORK/openssl.log" 2>&1 || { tail -50 "$WORK/openssl.log"; exit 1; }
 make install_dev >>"$WORK/openssl.log" 2>&1
@@ -70,13 +78,15 @@ echo "::group::boost"
 cd "$BLD" && rm -rf boost_1_92_0 && tar xjf "$DL/boost_1_92_0.tar.bz2" && cd boost_1_92_0
 ./bootstrap.sh --with-toolset=clang --with-libraries=chrono,filesystem,program_options,thread >"$WORK/boost.log" 2>&1 \
   || { tail -50 "$WORK/boost.log"; exit 1; }
-./b2 -j"$JOBS" -d1 toolset=clang architecture=x86 address-model=64 variant=release link=static threading=multi \
+./b2 -j"$JOBS" -d1 toolset=clang architecture="$B2_ARCH" address-model=64 variant=release link=static threading=multi \
   runtime-link=shared cxxflags="$CXXFLAGS" cflags="$CFLAGS" linkflags="$LDFLAGS" \
   --prefix="$PREFIX" --layout=system install >>"$WORK/boost.log" 2>&1 || { tail -80 "$WORK/boost.log"; exit 1; }
 echo "::endgroup::"
 
 echo "::group::libevent"
 cd "$BLD" && rm -rf libevent-2.1.13-stable && tar xzf "$DL/libevent-2.1.13-stable.tar.gz" && cd libevent-2.1.13-stable
+# Newer config.guess / config.sub from soqucoin's depends/ (old copies may not know arm64 Macs).
+for f in config.guess config.sub; do for d in . build-aux; do [ ! -f "$d/$f" ] || cp -f "$SRC/depends/$f" "$d/$f"; done; done
 ./configure --prefix="$PREFIX" --disable-shared --enable-static --disable-openssl --disable-libevent-regress \
   --disable-samples --disable-debug-mode >"$WORK/libevent.log" 2>&1 || { tail -50 "$WORK/libevent.log"; exit 1; }
 grep -q "^checking for sys/select.h... yes" "$WORK/libevent.log" || { echo "libevent configure: sys/select.h not detected" >&2; grep -E "^checking for sys/" "$WORK/libevent.log" >&2; exit 1; }
@@ -89,6 +99,8 @@ cd "$BLD" && rm -rf db-5.3.28.NC && tar xzf "$DL/db-5.3.28.NC.tar.gz" && cd db-5
 sed -i.old 's/__atomic_compare_exchange/__atomic_compare_exchange_db/' src/dbinc/atomic.h
 sed -i.old 's/atomic_init/atomic_init_db/' src/dbinc/atomic.h src/mp/mp_region.c src/mp/mp_mvcc.c src/mp/mp_fget.c \
   src/mutex/mut_method.c src/mutex/mut_tas.c
+# Also as in bdb.mk: BDB 5.3.28's own config.guess / config.sub (2010s) do not know arm64 Macs.
+cp -f "$SRC/depends/config.guess" "$SRC/depends/config.sub" dist/
 cd build_unix
 # Modern clang turns old-style C (implicit declarations / int conversions) in BDB's configure probes and sources into
 # errors, which makes configure mis-detect features (e.g. no mutex implementation). Keep them warnings.
@@ -121,7 +133,12 @@ echo "::endgroup::"
 echo "::group::soqucoin make"
 make -j"$JOBS" >"$WORK/build.log" 2>&1 || { grep -E "error:" "$WORK/build.log" | head -40; tail -80 "$WORK/build.log"; exit 1; }
 # Any call to an API newer than the deployment target (clang: "... is only available on macOS 13.0 or newer").
-if grep -hnE 'only available on macOS (1[3-9]|2[0-9])|\[-Wunguarded-availability' "$WORK"/*.log; then
+avail=$(grep -hoE 'only available on macOS [0-9]+(\.[0-9]+)*' "$WORK"/*.log || true)
+newer=$(awk -v t="$MACOSX_DEPLOYMENT_TARGET" '{split($NF, a, "."); split(t, b, ".");
+  if (a[1] + 0 > b[1] + 0 || (a[1] + 0 == b[1] + 0 && a[2] + 0 > b[2] + 0)) print}' <<<"$avail")
+unguarded=$(grep -hn '\[-Wunguarded-availability' "$WORK"/*.log || true)
+if [ -n "$newer$unguarded" ]; then
+  printf '%s\n' "$newer" "$unguarded"
   echo "something uses an API newer than macOS $MACOSX_DEPLOYMENT_TARGET" >&2
   exit 1
 fi
